@@ -58,8 +58,9 @@ namespace Parse
 			std::string pathBlobDetectPars;
 			bool previewBlobPts = true;
 			bool previewPattern = true;
+			int minImgsCalib = 20;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, previewBlobPts);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, previewBlobPts, previewPattern, minImgsCalib);
 		}calibratePars;
 
 		struct HandEyeCalib {
@@ -78,9 +79,12 @@ namespace Parse
 
 		NLOHMANN_DEFINE_TYPE_INTRUSIVE(Params, modes, input, calibratePars, handEyeCalib, reprojectAndRectify);
 
+		std::string loadParamsPath;
+
 		Params() {};
 		Params(int argc, char** argv)
 		{
+			loadParamsPath = rutaJsonPredet;
 			do {
 				if (argc < 2) {
 					cerr << "no se ha especificado ningun parametro, empleando parametros predefinidos\n";
@@ -98,6 +102,7 @@ namespace Parse
 					from_json(json, *this);
 					cout << "parametros parseados de: " << argv[1] << '\n';
 					cout << json.dump(2) << '\n';
+					loadParamsPath = argv[1];
 					return;
 				}
 				catch (const std::exception& e) {
@@ -108,11 +113,14 @@ namespace Parse
 
 			//errores
 			*this = Params();
-			fstream fs(Params::rutaJsonPredet, std::ios::out);
+			saveParams(Params::rutaJsonPredet);
+		}
+		bool saveParams(const std::string& path = rutaJsonPredet) {
+			fstream fs(path, ios::out);
+			if (!fs.is_open()) { cerr << "no se pudo guardar parametros\n"; return false; }
 			nlohmann::json json; to_json(json, *this);
 			fs << json.dump(2);
-			cout << "archivo guardado en\n\t" << Params::rutaJsonPredet << '\n';
-
+			cout << "archivo guardado en\n\t" << path << '\n';
 		}
 	}params;
 };//ns parse
@@ -191,6 +199,122 @@ void previewImg(const cv::Mat& img, std::string msg = "", bool wait = true) {
 		cv::waitKey();
 }
 
+
+
+using namespace cv;
+
+
+
+
+
+void calcBoardCornerPositions(Size boardSize, float squareSize, vector<Point3f>& corners)
+{
+	corners.clear();
+	for (int i = 0; i < boardSize.height; i++)
+		for (int j = 0; j < boardSize.width; j++)
+			corners.push_back(Point3f((2 * j + i % 2) * squareSize, i * squareSize, 0));
+}
+
+//suma cuadratica distancias respecto a final
+double computeReprojectionErrors(const vector<vector<Point3f> >& objectPoints,
+	const vector<vector<Point2f> >& imagePoints,
+	const vector<Mat>& rvecs, const vector<Mat>& tvecs,
+	const Mat& cameraMatrix, const Mat& distCoeffs,
+	vector<float>& perViewErrors)
+{
+	vector<Point2f> imagePoints2;
+	size_t totalPoints = 0;
+	double totalErr = 0, err;
+	perViewErrors.resize(objectPoints.size());
+
+	for (size_t i = 0; i < objectPoints.size(); ++i)
+	{
+		projectPoints(objectPoints[i], rvecs[i], tvecs[i], cameraMatrix, distCoeffs, imagePoints2);
+		err = norm(imagePoints[i], imagePoints2, NORM_L2);
+
+		size_t n = objectPoints[i].size();
+		perViewErrors[i] = (float)std::sqrt(err * err / n);
+		totalErr += err * err;
+		totalPoints += n;
+	}
+
+	return std::sqrt(totalErr / totalPoints);
+}
+
+//TODO integracion parcial, 
+bool runCalibration(
+	const cv::Size& patternSize, const double dimsSquarePattern,
+	cv:: Size& imageSize, Mat& cameraMatrix, Mat& distCoeffs,
+	vector<vector<Point2f> > imagePoints, vector<Mat>& rvecs, vector<Mat>& tvecs,
+	vector<float>& reprojErrs, double& totalAvgErr, vector<Point3f>& newObjPoints)
+{
+	double grid_width = dimsSquarePattern * (patternSize.width - 1);
+	//! [fixed_aspect]
+	cameraMatrix = Mat::eye(3, 3, CV_64F);
+	//if (s.flag & CALIB_FIX_ASPECT_RATIO)
+//		cameraMatrix.at<double>(0, 0) = s.aspectRatio;
+	//! [fixed_aspect]
+	//if (s.useFisheye) {
+	//	distCoeffs = Mat::zeros(4, 1, CV_64F);
+	//}
+	//else {
+		distCoeffs = Mat::zeros(8, 1, CV_64F);
+	//}
+
+	vector<vector<Point3f> > objectPoints(1);
+	calcBoardCornerPositions(patternSize, dimsSquarePattern, objectPoints[0]);
+	objectPoints[0][patternSize.width - 1].x = objectPoints[0][0].x + grid_width;
+	newObjPoints = objectPoints[0];
+
+	objectPoints.resize(imagePoints.size(), objectPoints[0]);
+
+	//Find intrinsic and extrinsic camera parameters
+	double rms;
+
+	
+	int iFixedPoint = -1;
+
+	int flag = 0;//TODO integrar
+	{
+		flag |= CALIB_FIX_PRINCIPAL_POINT;
+		//flag |= CALIB_ZERO_TANGENT_DIST;
+		flag |= CALIB_FIX_ASPECT_RATIO;
+		//flag |= CALIB_FIX_K1;
+		//flag |= CALIB_FIX_K2;
+		flag |= CALIB_FIX_K3;
+		flag |= CALIB_FIX_K4;
+		flag |= CALIB_FIX_K5;
+	}
+	cout << "regresion parametros camara\n";
+	rms = cv::calibrateCameraRO(objectPoints, imagePoints, imageSize, iFixedPoint,
+		cameraMatrix, distCoeffs, rvecs, tvecs, newObjPoints,
+		flag | CALIB_USE_LU);
+
+	//consistencia numerica !nan o inf
+	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
+
+	objectPoints.clear();
+	objectPoints.resize(imagePoints.size(), newObjPoints);
+	totalAvgErr = computeReprojectionErrors(objectPoints, imagePoints, rvecs, tvecs, cameraMatrix,
+		distCoeffs, reprojErrs);
+
+	cout << "Error calibracion err, suma cuadratica distancias a reproyectados " << totalAvgErr << '\n';
+
+	return ok;
+}
+
+void storeCalib(Parse::Params::CalibratePars& pars,
+	Mat& cameraMatrix, Mat& distCoeffs)
+{
+	constexpr auto eigenMap_CV_d = [](cv::Mat& mat) {//TODO a cabecera CV
+		return Eigen::Map<Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+			(double*)mat.data, mat.rows, mat.cols);
+	};
+	memcpy(pars.intrinsicParams.data(), cameraMatrix.data, 9 * sizeof(double));
+	pars.distParams.resize(distCoeffs.rows * distCoeffs.cols);
+	memcpy(pars.distParams.data(), distCoeffs.data, pars.distParams.size() * sizeof(double));
+}
+
 int main(int argc, char** argv)
 {
 	//parse input
@@ -210,7 +334,6 @@ int main(int argc, char** argv)
 		auto& calibPars = pars.calibratePars;
 
 		cv::Mat1b img;
-		int cntValid = 0;
 		auto blobDetector = iniBlobDetector(calibPars.pathBlobDetectPars);
 		cv::Mat imgShow;
 		//captura conjunto de puntos cada imagen
@@ -233,15 +356,32 @@ int main(int argc, char** argv)
 				img, calibPars.widthHeightPatternSz(), pts,
 				cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
 				blobDetector);
-			if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando"; continue; }
+			if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando\n"; continue; }
 			if (calibPars.previewPattern) {
 				cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
 				cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
 				previewImg(imgShow, "patternImg");
 			}
 			ptsImgs.push_back(pts);
-			cntValid++;
-		}
+		}//puntos imagenes validas
+		do {
+			if (calibPars.minImgsCalib > ptsImgs.size()) {
+				cerr << "no se puede calibrar, numero minimo de imagenes validas es " << calibPars.minImgsCalib << ", se han obtenido " << ptsImgs.size() << " validas.\n";
+				break;
+			}
+			cv::Mat cameraMatrix;
+			cv::Mat distCoeffs;
+			vector<cv::Mat>rvecs, tvecs;
+			vector<float>reprojErrs; double totErr;
+			vector<cv::Point3f>ptsReproj;
+			cv::Size imgSize = cv::Size(img.cols, img.rows);
+			bool calibOk = runCalibration(
+				calibPars.widthHeightPatternSz(), calibPars.dimsSquarePattern, imgSize,
+				cameraMatrix, distCoeffs, ptsImgs, rvecs, tvecs, reprojErrs, totErr, ptsReproj);
+			if (!calibOk) { cerr << "no se ha podido calibrar la camara\n"; break; }
+			storeCalib(calibPars, cameraMatrix, distCoeffs);
+			pars.saveParams(pars.loadParamsPath);
+		} while (false);
 	}//calibrateHandEye
 	if (pars.modes.calibrateHandEye) {
 
