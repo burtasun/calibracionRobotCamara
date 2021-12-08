@@ -5,8 +5,9 @@ using namespace Eigen;
 
 
 //glob static pars
-constexpr static char previewWin[]{ "Previews" };
-
+constexpr static char _previewWin[]{ "Previews" };
+//glob pars
+const cv::Scalar RED(0, 0, 255), GREEN(0, 255, 0), WHITE(255,255,255);
 
 struct XyzQuat {
 	float_t x = 0, y = 0, z = 0, qx = 0, qy = 0, qz = 0, qw = 1;
@@ -50,11 +51,13 @@ namespace Parse
 		}input;
 		struct CalibratePars {
 			vector<double> distParams;//parametros distorsion
-			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0};//matriz proyeccion/rMajor
-			std::array<int, 2> widthHeightPattern{ 3,9 };
+			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0 };//matriz proyeccion/rMajor
+			std::array<int, 2> widthHeightPattern{ 3,6 };
+			cv::Size2i widthHeightPatternSz() { return *(cv::Size*)&this->widthHeightPattern; };
 			double dimsSquarePattern = 7.5;
 			std::string pathBlobDetectPars;
 			bool previewBlobPts = true;
+			bool previewPattern = true;
 			//TODO mas modos y flags 
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, previewBlobPts);
 		}calibratePars;
@@ -97,7 +100,7 @@ namespace Parse
 					cout << json.dump(2) << '\n';
 					return;
 				}
-				catch (const std::exception&e) {
+				catch (const std::exception& e) {
 					cerr << "error al parsear json, cargando valores predeterminados\n\t" << e.what() << '\n';
 					break;
 				}
@@ -119,24 +122,24 @@ namespace Parse
 bool readRawImg_DispImg(const std::string& path, const int nRows, const int nCols, cv::Mat& img)
 {
 	const int offRead = 28;//cabecera hardCodeada, en imagenes sueltas 16
-			std::fstream fs(path, std::ios::in | std::ios::binary | std::ios::end);
-			if (!fs.is_open()) {
-				cerr << "no se pudo abrir " << path << '\n'; return false;
-			}
-			fs.seekg(0, std::ios::end);
-			auto endPos = fs.tellg();
-			fs.seekg(offRead, std::ios::beg);
-			//cout << "endPos " << endPos << "  fs.tellg() " << fs.tellg() << '\n';
-			img = cv::Mat(nRows, nCols, CV_16UC1);
-			if (!(img.rows * img.cols * sizeof(short) == endPos - fs.tellg())) {
-				cerr << "tamanio de buffer imagen incoherente, " << nRows << 'x' << nCols << 'x' << to_string(sizeof(short)) << "!=" << to_string(int(endPos - fs.tellg())) << '\n';
-				return false;
-			}
-			fs.read((char*)img.data, 2 * img.rows * img.cols);
-			return true;
+	std::fstream fs(path, std::ios::in | std::ios::binary | std::ios::end);
+	if (!fs.is_open()) {
+		cerr << "no se pudo abrir " << path << '\n'; return false;
+	}
+	fs.seekg(0, std::ios::end);
+	auto endPos = fs.tellg();
+	fs.seekg(offRead, std::ios::beg);
+	//cout << "endPos " << endPos << "  fs.tellg() " << fs.tellg() << '\n';
+	img = cv::Mat(nRows, nCols, CV_16UC1);
+	if (!(img.rows * img.cols * sizeof(short) == endPos - fs.tellg())) {
+		cerr << "tamanio de buffer imagen incoherente, " << nRows << 'x' << nCols << 'x' << to_string(sizeof(short)) << "!=" << to_string(int(endPos - fs.tellg())) << '\n';
+		return false;
+	}
+	fs.read((char*)img.data, 2 * img.rows * img.cols);
+	return true;
 };
 
-void minMax_to_byte(const cv::Mat&in,cv::Mat1b&out){
+void minMax_to_byte(const cv::Mat& in, cv::Mat1b& out) {
 	//minMax
 	double minV = 0, maxV = 0; cv::minMaxIdx(in, &minV, &maxV);
 	//scale to minMax
@@ -146,9 +149,9 @@ void minMax_to_byte(const cv::Mat&in,cv::Mat1b&out){
 	in.convertTo(imgD, CV_64F, alpha, beta);//v * alpha + beta
 	imgD.convertTo(out, CV_8U);
 }
-	
 
-bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const int nCols = 0, const bool saveParsedImg = false) {
+
+bool readImg(const std::string& path, cv::Mat1b& img, const int nRows = 0, const int nCols = 0, const bool saveParsedImg = false) {
 	auto pos = path.find_last_of('.');
 	if (pos == std::string::npos) {
 		cerr << "imagen sin extension\n\t" << path << "\n";
@@ -167,7 +170,7 @@ bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const 
 		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
 		cv::imwrite(pathW, img);
 	}
-	return img.data!=0;
+	return img.data != 0;
 }
 decltype(cv::SimpleBlobDetector::create()) iniBlobDetector(const std::string path) {
 	auto blobDetect = cv::SimpleBlobDetector::create();
@@ -175,20 +178,23 @@ decltype(cv::SimpleBlobDetector::create()) iniBlobDetector(const std::string pat
 	return blobDetect;
 }
 
-void previewBlobDetectorKPs(const cv::Mat& img, decltype(iniBlobDetector(""))& blobDetector) {
-	vector<cv::KeyPoint>kp;
-	blobDetector->detect(img, kp);
-	cv::Mat imgShow;
-	drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
-	imshow(previewWin, imgShow);
-	cout << "previewBlobDetectorKPs, nKps " << kp.size() << '\n';
-	cv::waitKey();
+void previewImg(const cv::Mat& img, std::string msg = "", bool wait = true) {
+	if (!msg.empty()) {
+		std::cout << msg;
+		int baseLine = 0;
+		cv::Size textSize = cv::getTextSize(msg, 1, 1, 1, &baseLine);
+		cv::Point textOrigin(img.cols - 2 * textSize.width - 10, img.rows - 2 * baseLine - 10);
+		cv::putText(img, msg, textOrigin, 1, 1, GREEN);
+	}
+	cv::imshow(_previewWin, img);
+	if (wait)
+		cv::waitKey();
 }
 
 int main(int argc, char** argv)
 {
 	//parse input
-	auto pars = Parse::Params(argc,argv);
+	auto pars = Parse::Params(argc, argv);
 	//calibracion camara
 	// 	   lectura imagen //TODO asociar a frameGrabberExterno?
 	// 			deteccion ptos
@@ -202,18 +208,38 @@ int main(int argc, char** argv)
 	auto& input = pars.input;
 	if (pars.modes.calibrateCam) {
 		auto& calibPars = pars.calibratePars;
-		
+
 		cv::Mat1b img;
 		int cntValid = 0;
 		auto blobDetector = iniBlobDetector(calibPars.pathBlobDetectPars);
+		cv::Mat imgShow;
+		//captura conjunto de puntos cada imagen
+		vector<vector<cv::Point2f> > ptsImgs;
 		for (int i = 0; i < input.pathFiles.size(); ++i) {
 			//lectura imagen
 			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
 				continue;
 			//deteccion ptos
-			if (calibPars.previewBlobPts)
-				previewBlobDetectorKPs(img, blobDetector);
-			
+			if (calibPars.previewBlobPts) {
+				vector<cv::KeyPoint>kp;
+				blobDetector->detect(img, kp);
+				drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
+				previewImg(imgShow, string("previewBlobDetectorKPs, nKps " + to_string(kp.size()) + '\n'));
+			}
+			//TODO mejorar precision centroide blobs elipticos
+			//  extrae base empleando 2 hipotesis 0-180º, y testea contencion en base  convexhull asociado
+			vector<cv::Point2f> pts;
+			bool found = cv::findCirclesGrid(
+				img, calibPars.widthHeightPatternSz(), pts,
+				cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
+				blobDetector);
+			if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando"; continue; }
+			if (calibPars.previewPattern) {
+				cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
+				cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
+				previewImg(imgShow, "patternImg");
+			}
+			ptsImgs.push_back(pts);
 			cntValid++;
 		}
 	}//calibrateHandEye

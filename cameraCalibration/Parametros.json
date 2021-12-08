@@ -19,8 +19,9 @@
         0.0
       ]
     ],
-	"pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
-	"previewBlobPts": true,
+    "pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
+    "previewBlobPts": true,
+    "previewPattern": true,
     "widthHeightPattern": [
       3,
       9
