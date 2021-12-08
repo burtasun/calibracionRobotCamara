@@ -3,6 +3,11 @@
 using namespace std;
 using namespace Eigen;
 
+
+//glob static pars
+constexpr static char previewWin[]{ "Previews" };
+
+
 struct XyzQuat {
 	float_t x = 0, y = 0, z = 0, qx = 0, qy = 0, qz = 0, qw = 1;
 	NLOHMANN_DEFINE_TYPE_INTRUSIVE(XyzQuat, x, y, z, qx, qy, qz, qw);
@@ -40,15 +45,18 @@ namespace Parse
 			bool inputFile = true;
 			vector<string>pathFiles;//imgs
 			std::array<int, 2>rowCol_IR_img = { 512,640 };
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(Input, inputFile, pathFiles, rowCol_IR_img);
+			bool saveParseImg = true;
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(Input, inputFile, pathFiles, rowCol_IR_img, saveParseImg);
 		}input;
 		struct CalibratePars {
 			vector<double> distParams;//parametros distorsion
 			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0};//matriz proyeccion/rMajor
 			std::array<int, 2> widthHeightPattern{ 3,9 };
 			double dimsSquarePattern = 7.5;
+			std::string pathBlobDetectPars;
+			bool previewBlobPts = true;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, previewBlobPts);
 		}calibratePars;
 
 		struct HandEyeCalib {
@@ -140,7 +148,7 @@ void minMax_to_byte(const cv::Mat&in,cv::Mat1b&out){
 }
 	
 
-bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const int nCols = 0) {
+bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const int nCols = 0, const bool saveParsedImg = false) {
 	auto pos = path.find_last_of('.');
 	if (pos == std::string::npos) {
 		cerr << "imagen sin extension\n\t" << path << "\n";
@@ -152,12 +160,29 @@ bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const 
 		if (!nRows || !nCols) { cerr << "rows Cols sin especificar\n"; return false; }
 		if (!readRawImg_DispImg(path, nRows, nCols, imgRaw)) { cerr << "error al leer archivo\n\t" << path << '\n'; return false; }
 		minMax_to_byte(imgRaw, img);
-		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
-		cv::imwrite(pathW, img);
 	}
 	else
 		img = cv::imread(path, cv::IMREAD_GRAYSCALE);
+	if (saveParsedImg && img.data) {
+		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
+		cv::imwrite(pathW, img);
+	}
 	return img.data!=0;
+}
+decltype(cv::SimpleBlobDetector::create()) iniBlobDetector(const std::string path) {
+	auto blobDetect = cv::SimpleBlobDetector::create();
+	blobDetect->read(path);
+	return blobDetect;
+}
+
+void previewBlobDetectorKPs(const cv::Mat& img, decltype(iniBlobDetector(""))& blobDetector) {
+	vector<cv::KeyPoint>kp;
+	blobDetector->detect(img, kp);
+	cv::Mat imgShow;
+	drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
+	imshow(previewWin, imgShow);
+	cout << "previewBlobDetectorKPs, nKps " << kp.size() << '\n';
+	cv::waitKey();
 }
 
 int main(int argc, char** argv)
@@ -177,12 +202,17 @@ int main(int argc, char** argv)
 	auto& input = pars.input;
 	if (pars.modes.calibrateCam) {
 		auto& calibPars = pars.calibratePars;
-		//lectura imagen
+		
 		cv::Mat1b img;
 		int cntValid = 0;
+		auto blobDetector = iniBlobDetector(calibPars.pathBlobDetectPars);
 		for (int i = 0; i < input.pathFiles.size(); ++i) {
-			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1]))
+			//lectura imagen
+			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
 				continue;
+			//deteccion ptos
+			if (calibPars.previewBlobPts)
+				previewBlobDetectorKPs(img, blobDetector);
 			
 			cntValid++;
 		}
