@@ -1,0 +1,95 @@
+{
+  "calibratePars": {
+    "dimsSquarePattern": 7.5,
+    "distParams": [],
+    "intrinsicParams": [
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        0.0
+      ]
+    ],
+    "pathFiles": [
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1687151.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1688264.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1689172.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1690324.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1691144.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1692237.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1693150.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1694107.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1695205.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1696062.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1697335.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1698422.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1699535.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1700568.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1701614.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1702758.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1703491.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1704536.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1705615.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1706821.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1707925.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1708914.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1710057.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1711013.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1712360.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1713489.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1714829.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1715946.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1716904.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1718170.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1719189.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1720533.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1721460.bin",
+	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1722724.bin"
+	],
+    "widthHeightPattern": [
+      3,
+      9
+    ]
+  },
+  "handEyeCalib": {
+    "frame_flange_cam": {
+      "qw": 1.0,
+      "qx": 0.0,
+      "qy": 0.0,
+      "qz": 0.0,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "frames_rob_flange": [],
+    "pathFiles": []
+  },
+  "modes": {
+    "calibrateCam": true,
+    "calibrateHandEye": false,
+    "reprojectAndRectify": false
+  },
+  "reprojectAndRectify": {
+    "frameReproj": {
+      "qw": 1.0,
+      "qx": 0.0,
+      "qy": 0.0,
+      "qz": 0.0,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "pathSaveReprojected": "",
+    "useExtrincRobotPars": false
+  }
+}

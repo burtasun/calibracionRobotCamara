@@ -40,9 +40,11 @@ namespace Parse
 		struct CalibratePars {
 			vector<string>pathFiles;//imgs
 			vector<double> distParams;//parametros distorsion
-			std::array<std::array<double, 3>, 3> intrinsicParams;//matriz proyeccion
+			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0};//matriz proyeccion/rMajor
+			std::array<int, 2> widthHeightPattern{ 3,9 };
+			double dimsSquarePattern = 7.5;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, pathFiles, distParams, intrinsicParams);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, pathFiles, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern);
 		}calibratePars;
 
 		struct HandEyeCalib {
@@ -83,8 +85,8 @@ namespace Parse
 					cout << json.dump(2) << '\n';
 					return;
 				}
-				catch (const std::exception&) {
-					cerr << "error al parsear json, cargando valores predeterminados\n";
+				catch (const std::exception&e) {
+					cerr << "error al parsear json, cargando valores predeterminados\n\t" << e.what() << '\n';
 					break;
 				}
 			} while (false);
@@ -94,6 +96,7 @@ namespace Parse
 			fstream fs(Params::rutaJsonPredet, std::ios::out);
 			nlohmann::json json; to_json(json, *this);
 			fs << json.dump(2);
+			cout << "archivo guardado en\n\t" << Params::rutaJsonPredet << '\n';
 
 		}
 	}params;

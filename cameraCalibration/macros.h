@@ -5,7 +5,7 @@ using float_t = float;
 #define MatTypeColsX(c) using M##c##x = Eigen::Matrix<float_t,c,-1>;
 #define MatTypeRowsX(r) using M##x##r = Eigen::Matrix<float_t,-1,r>;
 #define VecType(r) using V##r = Eigen::Matrix<float_t,r,1>;
-#define VecTypeRow(c) using Vr##r = Eigen::Matrix<float_t,1,c>;
+#define VecTypeRow(c) using Vr##c = Eigen::Matrix<float_t,1,c>;
 MatType(3, 4);
 MatTypeSq(4);
 MatTypeSq(3);
