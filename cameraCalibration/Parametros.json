@@ -19,6 +19,26 @@
         0.0
       ]
     ],
+    "widthHeightPattern": [
+      3,
+      9
+    ]
+  },
+  "handEyeCalib": {
+    "frame_flange_cam": {
+      "qw": 1.0,
+      "qx": 0.0,
+      "qy": 0.0,
+      "qz": 0.0,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "frames_rob_flange": [],
+    "pathFiles": []
+  },
+  "input": {
+    "inputFile": true,
     "pathFiles": [
 	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
 	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1687151.bin",
@@ -56,23 +76,10 @@
 	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1721460.bin",
 	"C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1722724.bin"
 	],
-    "widthHeightPattern": [
-      3,
-      9
+    "rowCol_IR_img": [
+      512,
+      640
     ]
-  },
-  "handEyeCalib": {
-    "frame_flange_cam": {
-      "qw": 1.0,
-      "qx": 0.0,
-      "qy": 0.0,
-      "qz": 0.0,
-      "x": 0.0,
-      "y": 0.0,
-      "z": 0.0
-    },
-    "frames_rob_flange": [],
-    "pathFiles": []
   },
   "modes": {
     "calibrateCam": true,

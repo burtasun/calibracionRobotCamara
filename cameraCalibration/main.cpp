@@ -36,15 +36,19 @@ namespace Parse
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(Modes,
 				calibrateCam, reprojectAndRectify, calibrateHandEye);
 		}modes;
-
-		struct CalibratePars {
+		struct Input {
+			bool inputFile = true;
 			vector<string>pathFiles;//imgs
+			std::array<int, 2>rowCol_IR_img = { 512,640 };
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(Input, inputFile, pathFiles, rowCol_IR_img);
+		}input;
+		struct CalibratePars {
 			vector<double> distParams;//parametros distorsion
 			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0};//matriz proyeccion/rMajor
 			std::array<int, 2> widthHeightPattern{ 3,9 };
 			double dimsSquarePattern = 7.5;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, pathFiles, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern);
 		}calibratePars;
 
 		struct HandEyeCalib {
@@ -61,7 +65,7 @@ namespace Parse
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(ReprojectAndRectify, frameReproj, pathSaveReprojected, useExtrincRobotPars);
 		}reprojectAndRectify;
 
-		NLOHMANN_DEFINE_TYPE_INTRUSIVE(Params, modes, calibratePars, handEyeCalib, reprojectAndRectify);
+		NLOHMANN_DEFINE_TYPE_INTRUSIVE(Params, modes, input, calibratePars, handEyeCalib, reprojectAndRectify);
 
 		Params() {};
 		Params(int argc, char** argv)
@@ -102,6 +106,60 @@ namespace Parse
 	}params;
 };//ns parse
 
+
+//devuelve imagen de 16 bits raw y 8 bits escalada minMax
+bool readRawImg_DispImg(const std::string& path, const int nRows, const int nCols, cv::Mat& img)
+{
+	const int offRead = 28;//cabecera hardCodeada, en imagenes sueltas 16
+			std::fstream fs(path, std::ios::in | std::ios::binary | std::ios::end);
+			if (!fs.is_open()) {
+				cerr << "no se pudo abrir " << path << '\n'; return false;
+			}
+			fs.seekg(0, std::ios::end);
+			auto endPos = fs.tellg();
+			fs.seekg(offRead, std::ios::beg);
+			//cout << "endPos " << endPos << "  fs.tellg() " << fs.tellg() << '\n';
+			img = cv::Mat(nRows, nCols, CV_16UC1);
+			if (!(img.rows * img.cols * sizeof(short) == endPos - fs.tellg())) {
+				cerr << "tamanio de buffer imagen incoherente, " << nRows << 'x' << nCols << 'x' << to_string(sizeof(short)) << "!=" << to_string(int(endPos - fs.tellg())) << '\n';
+				return false;
+			}
+			fs.read((char*)img.data, 2 * img.rows * img.cols);
+			return true;
+};
+
+void minMax_to_byte(const cv::Mat&in,cv::Mat1b&out){
+	//minMax
+	double minV = 0, maxV = 0; cv::minMaxIdx(in, &minV, &maxV);
+	//scale to minMax
+	double alpha = (0 - 255.) / (minV - maxV);
+	double beta = 0 - minV * alpha;
+	cv::Mat1d imgD;
+	in.convertTo(imgD, CV_64F, alpha, beta);//v * alpha + beta
+	imgD.convertTo(out, CV_8U);
+}
+	
+
+bool readImg(const std::string& path, cv::Mat1b& img,const int nRows = 0, const int nCols = 0) {
+	auto pos = path.find_last_of('.');
+	if (pos == std::string::npos) {
+		cerr << "imagen sin extension\n\t" << path << "\n";
+		return false;
+	}
+	auto ext = string(path.begin() + pos + 1, path.end());
+	if (!strcmp(ext.data(), "bin")) {
+		cv::Mat imgRaw;
+		if (!nRows || !nCols) { cerr << "rows Cols sin especificar\n"; return false; }
+		if (!readRawImg_DispImg(path, nRows, nCols, imgRaw)) { cerr << "error al leer archivo\n\t" << path << '\n'; return false; }
+		minMax_to_byte(imgRaw, img);
+		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
+		cv::imwrite(pathW, img);
+	}
+	else
+		img = cv::imread(path, cv::IMREAD_GRAYSCALE);
+	return img.data!=0;
+}
+
 int main(int argc, char** argv)
 {
 	//parse input
@@ -116,8 +174,18 @@ int main(int argc, char** argv)
 	//calibracion robot-camara / hand-eye //TODO integrar en aplicacion comunicando con robot?
 	// 
 	//reproyeccion extrinseca robot o extrinseca patron
+	auto& input = pars.input;
 	if (pars.modes.calibrateCam) {
-
+		auto& calibPars = pars.calibratePars;
+		//lectura imagen
+		cv::Mat1b img;
+		int cntValid = 0;
+		for (int i = 0; i < input.pathFiles.size(); ++i) {
+			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1]))
+				continue;
+			
+			cntValid++;
+		}
 	}//calibrateHandEye
 	if (pars.modes.calibrateHandEye) {
 
