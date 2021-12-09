@@ -17,3 +17,7 @@ MatTypeColsX(2);
 MatTypeColsX(3);
 MatTypeRowsX(2);
 MatTypeRowsX(3);
+using Mx = Eigen::Matrix<float_t, -1, -1>;
+#define M_PI 3.1415926535897932384626433832795
+#define deg2rad(deg) (deg*M_PI/180.)
+#define rad2deg(rad) (rad*180./M_PI)

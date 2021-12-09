@@ -2,21 +2,21 @@
   "calibratePars": {
     "dimsSquarePattern": 7.5,
     "distParams": [
-      1.7180211472508373,
-      -133.33795086454379,
-      -0.08780132631934019,
-      0.033891951495805143,
+      -1.1926543477055553,
+      0.0,
+      0.0,
+      0.0,
       0.0
     ],
     "intrinsicParams": [
       [
-        2389.032854148769,
+        2823.219521277031,
         0.0,
         319.5
       ],
       [
         0.0,
-        2389.032854148769,
+        2823.219521277031,
         255.5
       ],
       [
@@ -27,8 +27,11 @@
     ],
     "minImgsCalib": 10,
     "pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
-    "previewBlobPts": false,
-    "previewPattern": false,
+    "prevs": {
+      "previewBlobPts": false,
+      "previewPattern": false,
+      "previewUndistort": false
+    },
     "widthHeightPattern": [
       3,
       9
@@ -44,8 +47,7 @@
       "y": 0.0,
       "z": 0.0
     },
-    "frames_rob_flange": [],
-    "pathFiles": []
+    "pathFramesRob": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\calibPtsKuka.tsv"
   },
   "input": {
     "inputFile": true,
@@ -93,8 +95,8 @@
     "saveParseImg": false
   },
   "modes": {
-    "calibrateCam": true,
-    "calibrateHandEye": false,
+    "calibrateCam": false,
+    "calibrateHandEye": true,
     "reprojectAndRectify": false
   },
   "reprojectAndRectify": {
@@ -110,6 +112,6 @@
     "pathImageReference": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
     "pathSaveReprojected": "",
     "previewReprojected": true,
-    "useExtrincRobotPars": false
+    "useExtrincRobotPars": true
   }
 }
