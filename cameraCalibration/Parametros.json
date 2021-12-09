@@ -27,8 +27,8 @@
     ],
     "minImgsCalib": 10,
     "pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
-    "previewBlobPts": true,
-    "previewPattern": true,
+    "previewBlobPts": false,
+    "previewPattern": false,
     "widthHeightPattern": [
       3,
       9
@@ -90,7 +90,7 @@
       512,
       640
     ],
-    "saveParseImg": true
+    "saveParseImg": false
   },
   "modes": {
     "calibrateCam": true,
@@ -107,7 +107,9 @@
       "y": 0.0,
       "z": 0.0
     },
+    "pathImageReference": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
     "pathSaveReprojected": "",
+    "previewReprojected": true,
     "useExtrincRobotPars": false
   }
 }

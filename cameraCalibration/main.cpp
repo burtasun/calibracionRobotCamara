@@ -42,7 +42,7 @@ namespace Parse
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(Modes,
 				calibrateCam, reprojectAndRectify, calibrateHandEye);
 		}modes;
-		struct Input {
+		struct Input {//TODO mas tipos de inputs & enlazar con SDK Flir
 			bool inputFile = true;
 			vector<string>pathFiles;//imgs
 			std::array<int, 2>rowCol_IR_img = { 512,640 };
@@ -62,19 +62,19 @@ namespace Parse
 			//TODO mas modos y flags 
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, previewBlobPts, previewPattern, minImgsCalib);
 		}calibratePars;
-
 		struct HandEyeCalib {
 			XyzQuat frame_flange_cam;//output
 			vector<string> pathFiles;//imgs
 			vector<XyzQuat> frames_rob_flange;
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(HandEyeCalib, frame_flange_cam, pathFiles, frames_rob_flange);
 		}handEyeCalib;
-
 		struct ReprojectAndRectify {
 			XyzQuat frameReproj;//reproyeccion de referencia / pose 'ideal'
-			string pathSaveReprojected;
+			string pathSaveReprojected="";
 			bool useExtrincRobotPars = false;//implictamente usaremos frames_rob_flange, caso contrario se asume que dispone de patron
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(ReprojectAndRectify, frameReproj, pathSaveReprojected, useExtrincRobotPars);
+			string pathImageReference="";
+			bool previewReprojected = true;
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(ReprojectAndRectify, frameReproj, pathSaveReprojected, useExtrincRobotPars, pathImageReference, previewReprojected);
 		}reprojectAndRectify;
 
 		NLOHMANN_DEFINE_TYPE_INTRUSIVE(Params, modes, input, calibratePars, handEyeCalib, reprojectAndRectify);
@@ -334,38 +334,63 @@ int main(int argc, char** argv)
 		auto& calibPars = pars.calibratePars;
 
 		cv::Mat1b img;
-		auto blobDetector = iniBlobDetector(calibPars.pathBlobDetectPars);
 		cv::Mat imgShow;
 		//captura conjunto de puntos cada imagen
-		vector<vector<cv::Point2f> > ptsImgs;
-		for (int i = 0; i < input.pathFiles.size(); ++i) {
-			//lectura imagen
-			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
-				continue;
-			//deteccion ptos
-			if (calibPars.previewBlobPts) {
-				vector<cv::KeyPoint>kp;
-				blobDetector->detect(img, kp);
-				drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
-				previewImg(imgShow, string("previewBlobDetectorKPs, nKps " + to_string(kp.size()) + '\n'));
+		vector<vector<cv::Point2f> > ptsImgs(input.pathFiles.size());
+		int cntValid = 0;
+		int nThreads = 1;
+		bool mpReadImg = !(calibPars.previewPattern || calibPars.previewBlobPts);
+		if(mpReadImg)
+			nThreads = omp_get_max_threads();
+		omp_set_num_threads(nThreads);
+#pragma omp parallel
+		{
+			cv::Mat1b img;
+			auto blobDetector = iniBlobDetector(calibPars.pathBlobDetectPars);
+#pragma omp for
+			for (int i = 0; i < input.pathFiles.size(); ++i) {
+				//lectura imagen
+				if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
+					continue;
+				//deteccion ptos
+				if (calibPars.previewBlobPts) {
+					vector<cv::KeyPoint>kp;
+					blobDetector->detect(img, kp);
+					drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
+					previewImg(imgShow, string("previewBlobDetectorKPs, nKps " + to_string(kp.size()) + '\n'));
+				}
+				//TODO mejorar precision centroide blobs elipticos
+				//  extrae base empleando 2 hipotesis 0-180º, y testea contencion en base  convexhull asociado
+				vector<cv::Point2f> pts;
+				bool found = cv::findCirclesGrid(
+					img, calibPars.widthHeightPatternSz(), pts,
+					cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
+					blobDetector);
+				if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando\n"; continue; }
+				if (calibPars.previewPattern) {
+					cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
+					cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
+					previewImg(imgShow, "patternImg");
+				}
+				ptsImgs[i] = pts;
+				cntValid++;
+			}//puntos imagenes validas
+		}
+		//descarte no validos
+		vector<int> idImgs; idImgs.reserve(ptsImgs.size());
+		auto itAct = ptsImgs.begin();
+		auto it = itAct;
+		for (; it != ptsImgs.end(); ++it) {
+			if (it->size()) {
+				it->swap(*itAct);
+				itAct++;
+				idImgs.push_back(std::distance(ptsImgs.begin(), it));
 			}
-			//TODO mejorar precision centroide blobs elipticos
-			//  extrae base empleando 2 hipotesis 0-180º, y testea contencion en base  convexhull asociado
-			vector<cv::Point2f> pts;
-			bool found = cv::findCirclesGrid(
-				img, calibPars.widthHeightPatternSz(), pts,
-				cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
-				blobDetector);
-			if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando\n"; continue; }
-			if (calibPars.previewPattern) {
-				cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
-				cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
-				previewImg(imgShow, "patternImg");
-			}
-			ptsImgs.push_back(pts);
-		}//puntos imagenes validas
+		}
+		assert(std::distance(itAct, ptsImgs.begin()) == cntValid);
+		ptsImgs.erase(itAct, ptsImgs.end());
 		do {
-			if (calibPars.minImgsCalib > ptsImgs.size()) {
+			if (calibPars.minImgsCalib > cntValid) {
 				cerr << "no se puede calibrar, numero minimo de imagenes validas es " << calibPars.minImgsCalib << ", se han obtenido " << ptsImgs.size() << " validas.\n";
 				break;
 			}
@@ -384,7 +409,7 @@ int main(int argc, char** argv)
 		} while (false);
 	}//calibrateHandEye
 	if (pars.modes.calibrateHandEye) {
-
+		//parse robot frames poses
 	}//calibrateHandEye
 	if (pars.modes.reprojectAndRectify) {
 
