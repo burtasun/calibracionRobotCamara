@@ -8,6 +8,7 @@
       0.0,
       0.0
     ],
+    "guessUse": false,
     "intrinsicParams": [
       [
         2823.219521277031,
@@ -25,12 +26,28 @@
         1.0
       ]
     ],
-    "minImgsCalib": 10,
+    "intrinsicParamsGuess": [
+      [
+        3333.0,
+        0.0,
+        319.5
+      ],
+      [
+        0.0,
+        3333.0,
+        255.5
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
     "pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
     "prevs": {
       "previewBlobPts": false,
       "previewPattern": false,
-      "previewUndistort": false
+      "previewUndistort": true
     },
     "widthHeightPattern": [
       3,
@@ -95,7 +112,7 @@
     "saveParseImg": false
   },
   "modes": {
-    "calibrateCam": false,
+    "calibrateCam": true,
     "calibrateHandEye": true,
     "reprojectAndRectify": false
   },

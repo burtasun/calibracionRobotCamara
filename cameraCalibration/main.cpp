@@ -52,6 +52,8 @@ namespace Parse
 		struct CalibratePars {
 			vector<double> distParams;//parametros distorsion
 			std::array<std::array<double, 3>, 3> intrinsicParams{ 0,0,0,0,0,0,0,0,0 };//matriz proyeccion/rMajor
+			decltype(intrinsicParams) intrinsicParamsGuess = { 0,0,0,0,0,0,0,0,0 };
+			bool guessUse = false;
 			cv::Mat getIntrinsicParsCV() const { cv::Mat ret(3, 3, CV_64F); memcpy(ret.data, intrinsicParams.data(), sizeof(double) * 9); return ret; };
 			std::array<int, 2> widthHeightPattern{ 3,6 };
 			cv::Size2i widthHeightPatternSz() const { return *(cv::Size*)&this->widthHeightPattern; };
@@ -65,7 +67,7 @@ namespace Parse
 			}prevs;
 			int minImgsCalib = 20;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, intrinsicParamsGuess, guessUse, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);
 		}calibratePars;
 		struct HandEyeCalib {
 			XyzQuat frame_flange_cam;//output
@@ -250,13 +252,13 @@ bool runCalibration(
 	const cv::Size& patternSize, const double dimsSquarePattern,
 	cv::Size& imageSize, Mat& cameraMatrix, Mat& distCoeffs,
 	vector<vector<Point2f> > imagePoints, vector<Mat>& rvecs, vector<Mat>& tvecs,
-	vector<float>& reprojErrs, double& totalAvgErr, vector<Point3f>& newObjPoints)
+	vector<float>& reprojErrs, double& totalAvgErr, vector<Point3f>& newObjPoints, bool guessUse)
 {
 	double grid_width = dimsSquarePattern * (patternSize.width - 1);
 	//! [fixed_aspect]
 	cameraMatrix = Mat::eye(3, 3, CV_64F);
 	//if (s.flag & CALIB_FIX_ASPECT_RATIO)
-//		cameraMatrix.at<double>(0, 0) = s.aspectRatio;
+	//		cameraMatrix.at<double>(0, 0) = s.aspectRatio;
 	//! [fixed_aspect]
 	//if (s.useFisheye) {
 	//	distCoeffs = Mat::zeros(4, 1, CV_64F);
@@ -280,6 +282,8 @@ bool runCalibration(
 
 	int flag = 0;//TODO integrar
 	{
+		if(guessUse)
+			flag |= CALIB_USE_INTRINSIC_GUESS;//////////////
 		flag |= CALIB_FIX_PRINCIPAL_POINT;
 		flag |= CALIB_ZERO_TANGENT_DIST;
 		flag |= CALIB_FIX_ASPECT_RATIO;
@@ -293,7 +297,8 @@ bool runCalibration(
 	cout << "regresion parametros camara\n";
 	rms = cv::calibrateCameraRO(objectPoints, imagePoints, imageSize, iFixedPoint,
 		cameraMatrix, distCoeffs, rvecs, tvecs, newObjPoints,
-		flag | CALIB_USE_LU);
+		flag | CALIB_USE_LU,
+		TermCriteria(TermCriteria::COUNT + TermCriteria::EPS , 30, DBL_EPSILON));
 
 	//consistencia numerica !nan o inf
 	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
@@ -480,14 +485,14 @@ int main(int argc, char** argv)
 				cerr << "no se puede calibrar, numero minimo de imagenes validas es " << calibPars.minImgsCalib << ", se han obtenido " << ptsImgs.size() << " validas.\n";
 				break;
 			}
-			cv::Mat cameraMatrix;
+			cv::Mat cameraMatrix = calibPars.getIntrinsicParsCV();
 			cv::Mat distCoeffs;
 			vector<cv::Mat>rvecs, tvecs;
 			vector<float>reprojErrs; double totErr;
 			vector<cv::Point3f>ptsReproj;
 			bool calibOk = runCalibration(
 				calibPars.widthHeightPatternSz(), calibPars.dimsSquarePattern, imgSize,
-				cameraMatrix, distCoeffs, ptsImgs, rvecs, tvecs, reprojErrs, totErr, ptsReproj);
+				cameraMatrix, distCoeffs, ptsImgs, rvecs, tvecs, reprojErrs, totErr, ptsReproj, calibPars.guessUse);
 			if (!calibOk) { cerr << "no se ha podido calibrar la camara\n"; break; }
 			storeCalib(calibPars, cameraMatrix, distCoeffs);
 			pars.saveParams(pars.loadParamsPath);
@@ -536,7 +541,7 @@ int main(int argc, char** argv)
 			calcBoardCornerPositions(pars.calibratePars.widthHeightPatternSz(), pars.calibratePars.dimsSquarePattern, ptsRef);
 			for (int i = 0; i < cntValid; ++i) {
 				cv::Mat rvecCam, tvecCam;
-				if (!cv::solvePnP(ptsRef, ptsImgs[i], camMat, pars.calibratePars.distParams, rvecCam, tvecCam, false, cv::SOLVEPNP_SQPNP)) {
+				if (!cv::solvePnP(ptsRef, ptsImgs[i], camMat, pars.calibratePars.distParams, rvecCam, tvecCam, false, cv::SOLVEPNP_ITERATIVE)) {
 					cerr << "Improbable!\n";
 					continue;
 				}
