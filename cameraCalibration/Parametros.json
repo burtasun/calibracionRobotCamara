@@ -56,13 +56,13 @@
   },
   "handEyeCalib": {
     "frame_flange_cam": {
-      "qw": 1.0,
-      "qx": 0.0,
-      "qy": 0.0,
-      "qz": 0.0,
-      "x": 0.0,
-      "y": 0.0,
-      "z": 0.0
+      "qw": 0.4953787070963218,
+      "qx": -0.4808227285182815,
+      "qy": 0.5196511433120966,
+      "qz": -0.5033608343427631,
+      "x": -774.8319997096964,
+      "y": 14.183629775844906,
+      "z": -14.026879918849318
     },
     "pathFramesRob": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\calibPtsKuka.tsv"
   },
@@ -117,7 +117,7 @@
     "reprojectAndRectify": false
   },
   "reprojectAndRectify": {
-    "frameReproj": {
+    "frame_c0_w": {
       "qw": 1.0,
       "qx": 0.0,
       "qy": 0.0,
@@ -126,7 +126,8 @@
       "y": 0.0,
       "z": 0.0
     },
-    "pathImageReference": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
+    "pathFramesRob": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\calibPtsKuka.tsv",
+    "pathImageReference_c0_w": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
     "pathSaveReprojected": "",
     "previewReprojected": true,
     "useExtrincRobotPars": true

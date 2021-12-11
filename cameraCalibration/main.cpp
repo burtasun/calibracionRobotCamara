@@ -9,20 +9,88 @@ constexpr static char _previewWin[]{ "Previews" };
 //glob pars
 const cv::Scalar RED(0, 0, 255), GREEN(0, 255, 0), WHITE(255, 255, 255);
 
+
+//TODO crear clase auxiliar interfaz Eigen<->CV
+void M4_to_rvec_tvec(const M4& m, cv::Mat& rvec, cv::Mat& tvec) {
+	tvec = cv::Mat(1, 3, CV_64F);
+	rvec = cv::Mat(3, 3, CV_64F);
+	for (int i = 0; i < 3; ++i)
+		tvec.at<double>(i) = m(i, 3);
+	Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>((double*)rvec.data) = 
+		m.topLeftCorner<3, 3>().cast<double>();
+}
+
+std::array<cv::Mat, 2> M4_to_rvec_tvec(const M4& m) {//todo consistencia nombres
+	std::array<cv::Mat, 2> RT;
+	M4_to_rvec_tvec(m, RT[0], RT[1]);
+	return RT;
+}
+
+void RTCV_to_M4(const RTCV& rt, M4& m) {
+	m.setIdentity();
+	if (rt[0].cols == 3 && rt[0].rows == 3)
+		m.topLeftCorner<3, 3>() = Eigen::Map<M3>((double*)rt[0].data)
+		.transpose();//rowMajor->colMajor
+	else {//rodrigues -> theta=norm(r) / axis=r/theta
+		V3 r = Eigen::Map<V3>((double*)rt[0].data);
+		double theta = r.norm();
+		r.normalize();
+		m.topLeftCorner<3, 3>() = Eigen::AngleAxisd(theta, r).toRotationMatrix();
+	}
+	m.topRightCorner<3, 1>() = Eigen::Map<V3>((double*)rt[1].data);
+}
+
+M4 RTCV_to_M4(const RTCV& rt) {
+	M4 ret;
+	RTCV_to_M4(rt, ret);
+	return ret;
+}
+
+void invertRT_CV(const cv::Mat& r, const cv::Mat& t, cv::Mat& rinv, cv::Mat& tinv) {
+	//rinv=r^T
+	//tinv=-r^T t
+	if (r.rows == 3 && r.cols == 3) {
+		cv::transpose(r, rinv);
+		tinv = -rinv * t;
+	}
+	else {
+		cv::Mat rotTmp;
+		rinv = -r;
+		cv::Rodrigues(rinv, rotTmp);
+		tinv = -rotTmp * t;
+	}
+}
+RTCV invertRT_CV(const RTCV& rt) {
+	RTCV out;
+	invertRT_CV(rt[0], rt[1], out[0], out[1]);
+	return out;
+}
+
+
+
 struct XyzQuat {
-	float_t x = 0, y = 0, z = 0, qx = 0, qy = 0, qz = 0, qw = 1;
+	float_type x = 0, y = 0, z = 0, qx = 0, qy = 0, qz = 0, qw = 1;
 	NLOHMANN_DEFINE_TYPE_INTRUSIVE(XyzQuat, x, y, z, qx, qy, qz, qw);
 	M4 toM4() const {
 		M4 ret(M4::Identity());
 		ret.topRightCorner<3, 1>() = V3(x, y, z);
-		ret.topLeftCorner<3, 3>() = Eigen::Quaternion<float_t>(qw, qx, qy, qz).toRotationMatrix();
+		ret.topLeftCorner<3, 3>() = Eigen::Quaternion<float_type>(qw, qx, qy, qz).toRotationMatrix();
 		return ret;
-	}
-	XyzQuat fromM4(M4& T) const {
-		Eigen::Quaternion<float_t> q(T.topLeftCorner<3, 3>());
+	};
+	static XyzQuat fromM4(const M4& T) {
+		Eigen::Quaternion<float_type> q(T.topLeftCorner<3, 3>());
 		XyzQuat ret{ T(0,3),T(1,3),T(2,3),q.x(), q.y(), q.z(), q.w() };
 		return ret;
 	}
+	RTCV to_RT_CV() const {
+		return M4_to_rvec_tvec(this->toM4());
+	};
+	static XyzQuat fromRT_CV(const std::array<cv::Mat, 2>& RT_CV) {
+		return fromM4(RTCV_to_M4(RT_CV));
+	};
+	void setfromRT_CV(const std::array<cv::Mat, 2>& RT_CV) {
+		*this = fromM4(RTCV_to_M4(RT_CV));
+	};
 	NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(XyzQuat, x, y, z, qx, qy, qz, qw);
 };//hand-eye
 //parse pars
@@ -67,7 +135,7 @@ namespace Parse
 			}prevs;
 			int minImgsCalib = 20;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, intrinsicParamsGuess, guessUse, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, intrinsicParamsGuess, guessUse, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);//TODO check
 		}calibratePars;
 		struct HandEyeCalib {
 			XyzQuat frame_flange_cam;//output
@@ -75,12 +143,13 @@ namespace Parse
 			NLOHMANN_DEFINE_TYPE_INTRUSIVE(HandEyeCalib, frame_flange_cam, pathFramesRob);
 		}handEyeCalib;
 		struct ReprojectAndRectify {
-			XyzQuat frameReproj;//reproyeccion de referencia / pose 'ideal'
+			XyzQuat frame_c0_w;//reproyeccion de referencia / pose 'ideal'
 			string pathSaveReprojected = "";
 			bool useExtrincRobotPars = false;//implictamente usaremos frames_rob_flange, caso contrario se asume que dispone de patron
-			string pathImageReference = "";
+			string pathImageReference_c0_w = "";
 			bool previewReprojected = true;
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(ReprojectAndRectify, frameReproj, pathSaveReprojected, useExtrincRobotPars, pathImageReference, previewReprojected);
+			std::string pathFramesRob = "";
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(ReprojectAndRectify, frame_c0_w, pathSaveReprojected, useExtrincRobotPars, pathImageReference_c0_w, previewReprojected, pathFramesRob);
 		}reprojectAndRectify;
 
 		NLOHMANN_DEFINE_TYPE_INTRUSIVE(Params, modes, input, calibratePars, handEyeCalib, reprojectAndRectify);
@@ -127,6 +196,7 @@ namespace Parse
 			nlohmann::json json; to_json(json, *this);
 			fs << json.dump(2);
 			cout << "archivo guardado en\n\t" << path << '\n';
+			return true;
 		}
 	}params;
 };//ns parse
@@ -184,6 +254,8 @@ bool readImg(const std::string& path, cv::Mat1b& img, const int nRows = 0, const
 		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
 		cv::imwrite(pathW, img);
 	}
+	if(!img.data)
+		cerr << "error al leer archivo\n\t" << path << '\n';
 	return img.data != 0;
 }
 decltype(cv::SimpleBlobDetector::create()) iniBlobDetector(const std::string path) {
@@ -325,6 +397,40 @@ void storeCalib(Parse::Params::CalibratePars& pars,
 	memcpy(pars.distParams.data(), distCoeffs.data, pars.distParams.size() * sizeof(double));
 }
 
+
+//Detector pts y previews
+template<typename T>
+vector<cv::Point_<T>> getPtsImg(const Parse::Params::CalibratePars& calibPars, const cv::Mat& img,
+	Ptr<SimpleBlobDetector> blobDetector = SimpleBlobDetector::create())
+{
+	cv::Mat imgShow;
+	//deteccion ptos
+	if (calibPars.prevs.previewBlobPts) {
+		vector<cv::KeyPoint>kp;
+		blobDetector->detect(img, kp);
+		drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
+		previewImg(imgShow, string("previewBlobDetectorKPs, nKps " + to_string(kp.size()) + '\n'));
+	}
+	//TODO mejorar precision centroide blobs elipticos
+	//  extrae base empleando 2 hipotesis 0-180º, y testea contencion en base  convexhull asociado
+	vector<cv::Point_<T>> pts;
+	bool found = cv::findCirclesGrid(
+		img, calibPars.widthHeightPatternSz(), pts,
+		cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
+		blobDetector);
+	if (!found)
+		cerr << "no se encontraron keypoints en img, continuando\n";
+	else {
+		if (calibPars.prevs.previewPattern) {
+			cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
+			cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
+			previewImg(imgShow, "patternImg");
+		}
+	}
+	return pts;
+};
+
+
 //extraccion ptos de referencia(2d) segun parametros, desde imagenes
 template<typename T>
 int getImagesPts(
@@ -355,28 +461,11 @@ int getImagesPts(
 			if (!readImg(input.pathFiles[i], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
 				continue;
 			imgSize.width = img.cols; imgSize.height = img.rows;
-			//deteccion ptos
-			if (calibPars.prevs.previewBlobPts) {
-				vector<cv::KeyPoint>kp;
-				blobDetector->detect(img, kp);
-				drawKeypoints(img, kp, imgShow, cv::Scalar{ 0,0,255 });
-				previewImg(imgShow, string("previewBlobDetectorKPs, nKps " + to_string(kp.size()) + '\n'));
+			auto pts = getPtsImg<T>(pars.calibratePars, img, blobDetector);
+			if (!pts.empty()) {
+				ptsImgs[i] = pts;
+				cntValid++;
 			}
-			//TODO mejorar precision centroide blobs elipticos
-			//  extrae base empleando 2 hipotesis 0-180º, y testea contencion en base  convexhull asociado
-			vector<cv::Point_<T>> pts;
-			bool found = cv::findCirclesGrid(
-				img, calibPars.widthHeightPatternSz(), pts,
-				cv::CALIB_CB_ASYMMETRIC_GRID | cv::CALIB_CB_CLUSTERING/*mas robusto frente dRadial grandes*/,
-				blobDetector);
-			if (!found) { cerr << "no se encontraron keypoints en img, " << i << ", continuando\n"; continue; }
-			if (calibPars.prevs.previewPattern) {
-				cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
-				cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
-				previewImg(imgShow, "patternImg");
-			}
-			ptsImgs[i] = pts;
-			cntValid++;
 		}//puntos imagenes validas
 	}
 	auto itAct = ptsImgs.begin();
@@ -430,32 +519,6 @@ vector<M4> parseKukaPoses(const std::string& path) {
 }
 
 
-void M4_to_rvec_tvec(const M4& m, cv::Mat& rvec, cv::Mat& tvec) {
-	tvec = cv::Mat(1, 3, CV_64F);
-	rvec = cv::Mat(3, 3, CV_64F);
-	for (int i = 0; i < 3; ++i)
-		tvec.at<double>(i) = m(i, 3);
-	Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>((double*)rvec.data) = m.topLeftCorner<3, 3>().cast<double>();
-	/*Eigen::Map<Vector3d>((double*)rvec.data) =
-		Eigen::AngleAxisd(m.topLeftCorner<3, 3>().cast<double>()).axis()*
-		Eigen::AngleAxisd(m.topLeftCorner<3, 3>().cast<double>()).angle();*/
-}
-
-void invertRT_CV(const cv::Mat& r, const cv::Mat& t, cv::Mat& rinv, cv::Mat& tinv) {
-	//rinv=r^T
-	//tinv=-r^T t
-	if (r.rows == 3 && r.cols == 3) {
-		cv::transpose(r, rinv);
-		tinv = -rinv * t;
-	}
-	else {
-		cv::Mat rotTmp;
-		rinv = -r;
-		cv::Rodrigues(rinv, rotTmp);
-		tinv = -rotTmp * t;
-	}
-}
-
 int main(int argc, char** argv)
 {
 	//parse input
@@ -471,6 +534,7 @@ int main(int argc, char** argv)
 	// 
 	//reproyeccion extrinseca robot o extrinseca patron
 	if (pars.modes.calibrateCam) {
+		cout << "\n\n---------------------------\ncalibrateCam\n---------------------------\n\n";
 		do {
 			vector < vector<cv::Point2f>>ptsImgs;
 			cv::Size imgSize;
@@ -509,6 +573,7 @@ int main(int argc, char** argv)
 	}//calibrateCam
 
 	if (pars.modes.calibrateHandEye) {
+		cout << "\n\n---------------------------\ncalibrateHandEye\n---------------------------\n\n";
 		do {
 			//parse robot frames poses
 			auto& he = pars.handEyeCalib;
@@ -572,9 +637,9 @@ int main(int argc, char** argv)
 				tvecsRob.erase(tvecsRob.begin() + idValids.size(), tvecsRob.end());
 			}
 			vector<V3>ts;
-			array<int, 5>ids{ 0,1,2,4 };
+			array<int, 4>ids{ 0,1,2,4 };
 			for (int i = 0; i < ids.size(); ++i) {
-				cv::calibrateHandEye(rvecsRob, tvecsRob, rvecs_cam_ref, tvecs_cam_ref, rvecsFlange_Cam, tvecsFlange_Cam, (cv::HandEyeCalibrationMethod)ids[i]);// cv::HandEyeCalibrationMethod::CALIB_HAND_EYE_DANIILIDIS);
+				cv::calibrateHandEye(rvecsRob, tvecsRob, rvecs_cam_ref, tvecs_cam_ref, rvecsFlange_Cam, tvecsFlange_Cam,  (cv::HandEyeCalibrationMethod)ids[i]);// cv::HandEyeCalibrationMethod::CALIB_HAND_EYE_DANIILIDIS);
 				//cout << "rvecsFlange_Cam =\n" << rvecsFlange_Cam << "\n\n";
 				cout << "tvecsFlange_Cam =\n" << tvecsFlange_Cam << "\n\n";
 				//{
@@ -582,7 +647,7 @@ int main(int argc, char** argv)
 				//	cout << "rinv=\n" << rinv << "\n\n";
 				//	cout << "tinv =\n" << tinv << "\n\n";
 				//}
-				ts.push_back(Eigen::Map<Eigen::Vector3d>((double*)tvecsFlange_Cam.data).cast<float>());
+				ts.push_back(Eigen::Map<Eigen::Vector3d>((double*)tvecsFlange_Cam.data));
 			}
 			//evaluar distancia entre metodos
 			Mx dists(Mx::Zero(ts.size(), ts.size()));
@@ -591,11 +656,110 @@ int main(int argc, char** argv)
 					dists(i, j) = dists(j, i) = (ts[i] - ts[j]).norm();
 			V3 aver(V3::Zero()); for (auto& t : ts)aver += t; aver /= float(ts.size());
 			cout << "ts\n" << dists << "\naver "<<aver.transpose()<<'\n';
+			//guardarRes
+			{
+				RTCV rt_flange_cam = { rvecsFlange_Cam, tvecsFlange_Cam };
+				pars.handEyeCalib.frame_flange_cam.setfromRT_CV(rt_flange_cam);
+				pars.saveParams(pars.loadParamsPath);
+			}
 		} while (false);
 	}//calibrateHandEye
 
 	if (pars.modes.reprojectAndRectify) {
+		cout << "\n\n---------------------------\nreprojectAndRectify\n---------------------------\n\n";
+		do {
+			//2 tipos reproyeccion
+			//	asumiendo unicamente rotacion
+			//		r'_co_p = M R_co_ci M^-1 r'_ci_p
+			//	roto-trasladando
+			//		r'_co_p = M (s R_co_ci M^-1 r'_ci_p + d_co_ci)
+			//		s = d_w_ci / d_w_c0
+			//referencia de reporyeccion -> T_w_c0
+			std::array<cv::Mat, 2>rt_c0_w;
+			//	input explicito
+			if (pars.reprojectAndRectify.pathImageReference_c0_w.empty())
+				rt_c0_w = pars.reprojectAndRectify.frame_c0_w.to_RT_CV();
+			//	input de imagen con patron
+			else {
+				//ptsImg
+				Mat1b imgRef;
+				if (!readImg(pars.reprojectAndRectify.pathImageReference_c0_w, imgRef, pars.input.rowCol_IR_img[0], pars.input.rowCol_IR_img[1]))
+					break;
+				auto blobDetect = iniBlobDetector(pars.calibratePars.pathBlobDetectPars);
+				auto ptsImg = getPtsImg<cv::Point2d>(pars.calibratePars, imgRef, blobDetect);
+				//ptsRef
+				vector<cv::Point3d> ptsRef;//ptos frame pattern
+				calcBoardCornerPositions(pars.calibratePars.widthHeightPatternSz(), pars.calibratePars.dimsSquarePattern, ptsRef);
+				auto camMat = pars.calibratePars.getIntrinsicParsCV();
+				if (!cv::solvePnP(ptsRef, ptsImg,
+					camMat, pars.calibratePars.distParams,
+					rt_c0_w[0], rt_c0_w[1],
+					false, cv::SOLVEPNP_ITERATIVE)) {
+					cerr << "no se pudo extraer roto-traslacion camPatron\n"; break;
+				}
+			}
+			cout << "R " << rt_c0_w[0] << "\nT " << rt_c0_w[1] << "\n";
+			M4 T_c0_w = RTCV_to_M4(rt_c0_w);
 
+			//dos tipos inputs reproyeccion
+			// RT_ci_w
+			//	derivada de calibracion extrinseca y poses robot
+			vector<M4> Ts_rob_flange;
+			M4 T_flange_cam;//he
+
+			decltype(iniBlobDetector("")) blobDetector;//TODO encapsular en clase con estado estatico
+			vector<cv::Point3d> ptsRef;//ptos frame pattern
+
+			if (pars.reprojectAndRectify.useExtrincRobotPars) {
+				Ts_rob_flange = parseKukaPoses(pars.reprojectAndRectify.pathFramesRob);
+				//	flange_ci -> hand-eye guardado
+				T_flange_cam = pars.handEyeCalib.frame_flange_cam.toM4();
+			}
+			else {//deduccion de pose desde patron
+				//TODO encapsular en clase con estado estatico
+				blobDetector = iniBlobDetector(pars.calibratePars.pathBlobDetectPars);
+				calcBoardCornerPositions(pars.calibratePars.widthHeightPatternSz(), pars.calibratePars.dimsSquarePattern, ptsRef);
+			}
+
+			auto& input = pars.input;
+			cv::Mat1b img;
+			for (int idFile = 0; idFile < input.pathFiles.size(); ++idFile) {
+				if (readImg(input.pathFiles[idFile], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
+					continue;
+				//Roto-traslacion extrinseca final
+				RTCV rt_c0_ci;
+				if(!pars.reprojectAndRectify.useExtrincRobotPars){//derivado de patron
+					//TODO encapsular en clase detect imgs
+					auto pts = getPtsImg<cv::Point2d>(pars.calibratePars, img, blobDetector);
+					auto camMat = pars.calibratePars.getIntrinsicParsCV();
+					vector<cv::Mat>rvecs_cam_ref, tvecs_cam_ref;//T_cam_ref
+					RTCV rt_ci_ref;
+					bool foundRef = cv::solvePnP(ptsRef, pts,
+						camMat, pars.calibratePars.distParams, 
+						rt_ci_ref[0], rt_ci_ref[1], 
+						false, cv::SOLVEPNP_ITERATIVE);
+					if(foundRef) {
+ 						cerr << "Improbable!\n";
+						continue;
+					}
+					auto T_ref_ci = RTCV_to_M4(invertRT_CV(rt_c0_ci));
+					//ref (patron) = world
+					rt_c0_ci = M4_to_rvec_tvec(T_c0_w * T_ref_ci);
+				}
+				//robotExtrinsic
+				else {
+					//c0_ci=c0_w*w_rob*rob_flange*flange_ci
+					M4 T_w_rob = M4::Identity();//asumir que frameRob = frameWorld->w_rob=I
+					
+					M4 T_c0_w = RTCV_to_M4(rt_c0_w);
+					M4& T_rob_flange = Ts_rob_flange[idFile];
+					
+					M4 T_c0_ci = T_c0_w * T_w_rob * T_rob_flange * T_flange_cam;
+					
+					rt_c0_ci = M4_to_rvec_tvec(T_c0_ci);
+				}
+			}//imgs reproj loop
+		} while (false);
 	}//reprojectAndRectify
 
 	return 0;
