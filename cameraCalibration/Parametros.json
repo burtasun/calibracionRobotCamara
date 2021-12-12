@@ -2,7 +2,7 @@
   "calibratePars": {
     "dimsSquarePattern": 7.5,
     "distParams": [
-      -1.1926543477055553,
+      0.0,
       0.0,
       0.0,
       0.0,
@@ -11,13 +11,13 @@
     "guessUse": false,
     "intrinsicParams": [
       [
-        2823.219521277031,
+        3126.871726628004,
         0.0,
         319.5
       ],
       [
         0.0,
-        2823.219521277031,
+        3126.871726628004,
         255.5
       ],
       [
@@ -43,6 +43,7 @@
         1.0
       ]
     ],
+    "minImgsCalib": 20,
     "pathBlobDetectPars": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsOptic\\Set2\\blobPars.dat",
     "prevs": {
       "previewBlobPts": false,
@@ -112,9 +113,9 @@
     "saveParseImg": false
   },
   "modes": {
-    "calibrateCam": true,
-    "calibrateHandEye": true,
-    "reprojectAndRectify": false
+    "calibrateCam": false,
+    "calibrateHandEye": false,
+    "reprojectAndRectify": true
   },
   "reprojectAndRectify": {
     "frame_c0_w": {
@@ -130,6 +131,6 @@
     "pathImageReference_c0_w": "C:\\Users\\benat\\source\\repos\\camCalibration\\imgsIR\\CalibracionAuthentic\\Measurements\\CalibracionAuthentic\\raw\\f1686045.bin",
     "pathSaveReprojected": "",
     "previewReprojected": true,
-    "useExtrincRobotPars": true
+    "useExtrincRobotPars": false
   }
 }

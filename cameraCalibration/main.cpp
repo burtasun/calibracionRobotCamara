@@ -16,8 +16,25 @@ void M4_to_rvec_tvec(const M4& m, cv::Mat& rvec, cv::Mat& tvec) {
 	rvec = cv::Mat(3, 3, CV_64F);
 	for (int i = 0; i < 3; ++i)
 		tvec.at<double>(i) = m(i, 3);
-	Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>((double*)rvec.data) = 
+	Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>((double*)rvec.data) =
 		m.topLeftCorner<3, 3>().cast<double>();
+}
+
+void rvecCV_to_M3(const cv::Mat& rvec, M3& m) {
+	if (rvec.rows == 3 && rvec.cols == 3)
+		m =
+		Eigen::Map<Eigen::Matrix<double, 3, 3, Eigen::RowMajor>>((double*)rvec.data);
+	else {//asumir rodriguez
+		V3 r = Eigen::Map<V3>((double*)rvec.data);
+		double theta = r.norm();
+		r /= theta;
+		m = Eigen::AngleAxisd(theta, r).toRotationMatrix();
+	}
+}
+M3 rvecCV_to_M3(const cv::Mat& rvec) {
+	M3 ret;
+	rvecCV_to_M3(rvec, ret);
+	return ret;
 }
 
 std::array<cv::Mat, 2> M4_to_rvec_tvec(const M4& m) {//todo consistencia nombres
@@ -28,15 +45,7 @@ std::array<cv::Mat, 2> M4_to_rvec_tvec(const M4& m) {//todo consistencia nombres
 
 void RTCV_to_M4(const RTCV& rt, M4& m) {
 	m.setIdentity();
-	if (rt[0].cols == 3 && rt[0].rows == 3)
-		m.topLeftCorner<3, 3>() = Eigen::Map<M3>((double*)rt[0].data)
-		.transpose();//rowMajor->colMajor
-	else {//rodrigues -> theta=norm(r) / axis=r/theta
-		V3 r = Eigen::Map<V3>((double*)rt[0].data);
-		double theta = r.norm();
-		r.normalize();
-		m.topLeftCorner<3, 3>() = Eigen::AngleAxisd(theta, r).toRotationMatrix();
-	}
+	m.topLeftCorner<3, 3>() = rvecCV_to_M3(rt[0]);
 	m.topRightCorner<3, 1>() = Eigen::Map<V3>((double*)rt[1].data);
 }
 
@@ -135,7 +144,7 @@ namespace Parse
 			}prevs;
 			int minImgsCalib = 20;
 			//TODO mas modos y flags 
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, intrinsicParamsGuess, guessUse, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);//TODO check
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(CalibratePars, distParams, intrinsicParams, intrinsicParamsGuess, guessUse, widthHeightPattern, dimsSquarePattern, pathBlobDetectPars, prevs, minImgsCalib);
 		}calibratePars;
 		struct HandEyeCalib {
 			XyzQuat frame_flange_cam;//output
@@ -254,7 +263,7 @@ bool readImg(const std::string& path, cv::Mat1b& img, const int nRows = 0, const
 		std::string pathW = string(path.begin(), path.begin() + pos) + ".tiff";
 		cv::imwrite(pathW, img);
 	}
-	if(!img.data)
+	if (!img.data)
 		cerr << "error al leer archivo\n\t" << path << '\n';
 	return img.data != 0;
 }
@@ -266,7 +275,6 @@ decltype(cv::SimpleBlobDetector::create()) iniBlobDetector(const std::string pat
 
 void previewImg(const cv::Mat& img, std::string msg = "", bool wait = true) {
 	if (!msg.empty()) {
-		std::cout << msg;
 		int baseLine = 0;
 		cv::Size textSize = cv::getTextSize(msg, 1, 1, 1, &baseLine);
 		cv::Point textOrigin(img.cols - 2 * textSize.width - 10, img.rows - 2 * baseLine - 10);
@@ -350,16 +358,16 @@ bool runCalibration(
 	double rms;
 
 
-	int iFixedPoint = -1;
+	int iFixedPoint = -1;// patternSize.width - 1;
 
 	int flag = 0;//TODO integrar
 	{
-		if(guessUse)
+		if (guessUse)
 			flag |= CALIB_USE_INTRINSIC_GUESS;//////////////
 		flag |= CALIB_FIX_PRINCIPAL_POINT;
 		flag |= CALIB_ZERO_TANGENT_DIST;
 		flag |= CALIB_FIX_ASPECT_RATIO;
-		//flag |= CALIB_FIX_K1;
+		flag |= CALIB_FIX_K1;
 		flag |= CALIB_FIX_K2;
 		flag |= CALIB_FIX_K3;
 		flag |= CALIB_FIX_K4;
@@ -403,6 +411,7 @@ template<typename T>
 vector<cv::Point_<T>> getPtsImg(const Parse::Params::CalibratePars& calibPars, const cv::Mat& img,
 	Ptr<SimpleBlobDetector> blobDetector = SimpleBlobDetector::create())
 {
+	static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
 	cv::Mat imgShow;
 	//deteccion ptos
 	if (calibPars.prevs.previewBlobPts) {
@@ -423,7 +432,11 @@ vector<cv::Point_<T>> getPtsImg(const Parse::Params::CalibratePars& calibPars, c
 	else {
 		if (calibPars.prevs.previewPattern) {
 			cv::cvtColor(img, imgShow, cv::ColorConversionCodes::COLOR_GRAY2BGR);
-			cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), cv::Mat(pts), true);
+			cv::Mat ptsMat = cv::Mat(pts);
+			if constexpr (std::is_same_v<T, double>)
+				ptsMat.convertTo(ptsMat, CV_32FC2);
+			cout << "ptsMat " << ptsMat.cols << ' ' << ptsMat.rows << ' ' << ptsMat.depth() << ' ' << ptsMat.channels() << '\n';
+			cv::drawChessboardCorners(imgShow, calibPars.widthHeightPatternSz(), ptsMat, true);
 			previewImg(imgShow, "patternImg");
 		}
 	}
@@ -439,6 +452,7 @@ int getImagesPts(
 	cv::Size& imgSize,
 	vector<int>& idValids)
 {
+	static_assert(std::is_same_v<T, float> || std::is_same_v<T, double>);
 	auto& input = pars.input;
 	auto& calibPars = pars.calibratePars;
 	ptsImgs.resize(input.pathFiles.size());
@@ -500,7 +514,7 @@ vector<M4> parseKukaPoses(const std::string& path) {
 	vector<M4>out;
 	char buffer[10000];
 	std::string_view strv(buffer, 10000);
-	std::array<double, 6>nums;
+	std::array<double, 6>nums{ 0,0,0,0,0,0 };
 	size_t off1 = 0, off2 = 0;
 	while (!fs.eof()) {
 		fs.getline(buffer, 10000);
@@ -639,7 +653,7 @@ int main(int argc, char** argv)
 			vector<V3>ts;
 			array<int, 4>ids{ 0,1,2,4 };
 			for (int i = 0; i < ids.size(); ++i) {
-				cv::calibrateHandEye(rvecsRob, tvecsRob, rvecs_cam_ref, tvecs_cam_ref, rvecsFlange_Cam, tvecsFlange_Cam,  (cv::HandEyeCalibrationMethod)ids[i]);// cv::HandEyeCalibrationMethod::CALIB_HAND_EYE_DANIILIDIS);
+				cv::calibrateHandEye(rvecsRob, tvecsRob, rvecs_cam_ref, tvecs_cam_ref, rvecsFlange_Cam, tvecsFlange_Cam, (cv::HandEyeCalibrationMethod)ids[i]);// cv::HandEyeCalibrationMethod::CALIB_HAND_EYE_DANIILIDIS);
 				//cout << "rvecsFlange_Cam =\n" << rvecsFlange_Cam << "\n\n";
 				cout << "tvecsFlange_Cam =\n" << tvecsFlange_Cam << "\n\n";
 				//{
@@ -655,7 +669,7 @@ int main(int argc, char** argv)
 				for (int j = i + 1; j < ts.size(); ++j)
 					dists(i, j) = dists(j, i) = (ts[i] - ts[j]).norm();
 			V3 aver(V3::Zero()); for (auto& t : ts)aver += t; aver /= float(ts.size());
-			cout << "ts\n" << dists << "\naver "<<aver.transpose()<<'\n';
+			cout << "ts\n" << dists << "\naver " << aver.transpose() << '\n';
 			//guardarRes
 			{
 				RTCV rt_flange_cam = { rvecsFlange_Cam, tvecsFlange_Cam };
@@ -686,7 +700,10 @@ int main(int argc, char** argv)
 				if (!readImg(pars.reprojectAndRectify.pathImageReference_c0_w, imgRef, pars.input.rowCol_IR_img[0], pars.input.rowCol_IR_img[1]))
 					break;
 				auto blobDetect = iniBlobDetector(pars.calibratePars.pathBlobDetectPars);
-				auto ptsImg = getPtsImg<cv::Point2d>(pars.calibratePars, imgRef, blobDetect);
+				auto ptsImg = getPtsImg<double>(pars.calibratePars, imgRef, blobDetect);
+				if (ptsImg.empty()) {
+					cerr << "la imagen de referencia no tiene patron o no se ha detectado\n"; break;
+				}
 				//ptsRef
 				vector<cv::Point3d> ptsRef;//ptos frame pattern
 				calcBoardCornerPositions(pars.calibratePars.widthHeightPatternSz(), pars.calibratePars.dimsSquarePattern, ptsRef);
@@ -723,41 +740,103 @@ int main(int argc, char** argv)
 
 			auto& input = pars.input;
 			cv::Mat1b img;
+
+			auto camIntrinsics = pars.calibratePars.getIntrinsicParsCV();
+			auto& distortPars = pars.calibratePars.distParams;
+
 			for (int idFile = 0; idFile < input.pathFiles.size(); ++idFile) {
-				if (readImg(input.pathFiles[idFile], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
+				if (!readImg(input.pathFiles[idFile], img, input.rowCol_IR_img[0], input.rowCol_IR_img[1], input.saveParseImg))
 					continue;
 				//Roto-traslacion extrinseca final
-				RTCV rt_c0_ci;
-				if(!pars.reprojectAndRectify.useExtrincRobotPars){//derivado de patron
+				M4 T_c0_ci; RTCV rt_c0_ci;
+				double k_w_c0, k_w_ci;
+				if (!pars.reprojectAndRectify.useExtrincRobotPars) {//derivado de patron
 					//TODO encapsular en clase detect imgs
-					auto pts = getPtsImg<cv::Point2d>(pars.calibratePars, img, blobDetector);
+					auto pts = getPtsImg<float>(pars.calibratePars, img, blobDetector);
+					if (pts.empty())continue;
 					auto camMat = pars.calibratePars.getIntrinsicParsCV();
 					vector<cv::Mat>rvecs_cam_ref, tvecs_cam_ref;//T_cam_ref
 					RTCV rt_ci_ref;
 					bool foundRef = cv::solvePnP(ptsRef, pts,
-						camMat, pars.calibratePars.distParams, 
-						rt_ci_ref[0], rt_ci_ref[1], 
+						camMat, pars.calibratePars.distParams,
+						rt_ci_ref[0], rt_ci_ref[1],
 						false, cv::SOLVEPNP_ITERATIVE);
-					if(foundRef) {
- 						cerr << "Improbable!\n";
+					if (!foundRef) {
+						cerr << "Improbable!\n";
 						continue;
 					}
-					auto T_ref_ci = RTCV_to_M4(invertRT_CV(rt_c0_ci));
+					auto T_ref_ci = RTCV_to_M4(invertRT_CV(rt_ci_ref));
 					//ref (patron) = world
-					rt_c0_ci = M4_to_rvec_tvec(T_c0_w * T_ref_ci);
+					T_c0_ci = T_c0_w * T_ref_ci;
+					rt_c0_ci = M4_to_rvec_tvec(T_c0_ci);
+					k_w_c0 = T_c0_w(2, 3);
+					k_w_ci = T_c0_w(2, 3) - T_c0_ci(2, 3);
 				}
 				//robotExtrinsic
 				else {
 					//c0_ci=c0_w*w_rob*rob_flange*flange_ci
 					M4 T_w_rob = M4::Identity();//asumir que frameRob = frameWorld->w_rob=I
-					
+
 					M4 T_c0_w = RTCV_to_M4(rt_c0_w);
 					M4& T_rob_flange = Ts_rob_flange[idFile];
-					
-					M4 T_c0_ci = T_c0_w * T_w_rob * T_rob_flange * T_flange_cam;
-					
-					rt_c0_ci = M4_to_rvec_tvec(T_c0_ci);
+
+					T_c0_ci = T_c0_w * T_w_rob * T_rob_flange * T_flange_cam;
 				}
+				rt_c0_ci = M4_to_rvec_tvec(T_c0_ci);
+				k_w_c0 = T_c0_w(2, 3);
+				k_w_ci = T_c0_w(2, 3) - T_c0_ci(2, 3);
+				//reproyeccion
+				//2 tipos reproyeccion
+				//	asumiendo unicamente rotacion
+				//		r'_co_p = M R_co_ci M^-1 r'_ci_p
+				//	roto-trasladando
+				//		r'_co_p = M (s R_co_ci M^-1 r'_ci_p + d_co_ci)
+				//		s = d_w_ci / d_w_c0
+				cv::Mat imgReproj;
+				{
+					auto& R = rt_c0_ci[0];
+					auto& d = rt_c0_ci[1];
+					cout << "c0_ci\nR\n" << R << "\n\nd\n" << d << "\nk_w_c0 " << k_w_c0 << " k_w_ci " << k_w_ci << "\n----------\n";
+					cv::Mat1d camIntrinsic = camIntrinsics;
+					double fx = camIntrinsic(0, 0);
+					double fy = camIntrinsic(1, 1);
+					double cx = camIntrinsic(0, 2);
+					double cy = camIntrinsic(1, 2);
+
+					//reproyeccion desplazada
+					cv::Mat1d d_c0_dist = d;
+					d_c0_dist(0, 2) = k_w_c0;//distancia real conocida, distancia ormalizada offset en proyectado en plazo c0
+					cv::Mat1d t_c0_ci_proj = (camIntrinsic * d_c0_dist.t()).t();//proyectado
+					//normalizado homogeneo
+					cv::Mat1d t_c0_ci_proj_norm(1, 2);
+					t_c0_ci_proj_norm(0, 0) = t_c0_ci_proj(0, 0) / t_c0_ci_proj(0, 2);
+					t_c0_ci_proj_norm(0, 1) = t_c0_ci_proj(0, 1) / t_c0_ci_proj(0, 2);
+
+					//factor de escala de plano repryectado normalizado a distancia de c0
+					double s = k_w_ci / k_w_c0;
+					cout << "s "<<s<<"   t_c0_ci_proj " << t_c0_ci_proj << "\nt_c0_ci_proj_norm " << t_c0_ci_proj_norm << '\n';
+
+					//encapsulando escalado y offset en nueva proyeccion
+					cv::Mat1d camIntrinsicReproj(3, 3);
+					cv::setIdentity(camIntrinsicReproj);
+					camIntrinsicReproj(0, 0) = s * fx;
+					camIntrinsicReproj(1, 1) = s * fy;
+					camIntrinsicReproj(0, 2) = t_c0_ci_proj_norm(0, 0);
+					camIntrinsicReproj(1, 2) = t_c0_ci_proj_norm(0, 1);
+					//mapXY_fp32.convertTo(mapXY_fp32, mapXY_fp32.type(), s);
+
+					cv::Mat mapXY_32fc2;
+					cv::initUndistortRectifyMap(camIntrinsic, distortPars, R, camIntrinsicReproj, cv::Size(img.cols, img.rows),
+						CV_32FC2, mapXY_32fc2, cv::noArray());
+
+					cv::remap(img, imgReproj, mapXY_32fc2, cv::noArray(), cv::INTER_LINEAR, cv::BORDER_CONSTANT, uchar(0));
+				}
+
+				if (pars.reprojectAndRectify.previewReprojected) {
+					cv::Mat prevPIP; cv::hconcat(img, imgReproj, prevPIP);
+					previewImg(prevPIP, "img     imgReproj");
+				}
+
 			}//imgs reproj loop
 		} while (false);
 	}//reprojectAndRectify
