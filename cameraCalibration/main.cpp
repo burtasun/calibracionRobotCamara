@@ -58,16 +58,21 @@ M4 RTCV_to_M4(const RTCV& rt) {
 void invertRT_CV(const cv::Mat& r, const cv::Mat& t, cv::Mat& rinv, cv::Mat& tinv) {
 	//rinv=r^T
 	//tinv=-r^T t
+	cv::Mat rotTmp;
+	cv::Mat* rotInv = 0;
 	if (r.rows == 3 && r.cols == 3) {
-		cv::transpose(r, rinv);
-		tinv = -rinv * t;
+		rinv = r.t();
+		rotInv = &rinv;
 	}
 	else {
-		cv::Mat rotTmp;
 		rinv = -r;
 		cv::Rodrigues(rinv, rotTmp);
-		tinv = -rotTmp * t;
+		rotInv = &rotTmp;
 	}
+	if (t.rows == 1)
+		tinv = -*rotInv * t.t();
+	else
+		tinv = -*rotInv * t;
 }
 RTCV invertRT_CV(const RTCV& rt) {
 	RTCV out;
@@ -148,8 +153,9 @@ namespace Parse
 		}calibratePars;
 		struct HandEyeCalib {
 			XyzQuat frame_flange_cam;//output
+			XyzQuat frame_robot_world;//output
 			string pathFramesRob;
-			NLOHMANN_DEFINE_TYPE_INTRUSIVE(HandEyeCalib, frame_flange_cam, pathFramesRob);
+			NLOHMANN_DEFINE_TYPE_INTRUSIVE(HandEyeCalib, frame_flange_cam, frame_robot_world, pathFramesRob);
 		}handEyeCalib;
 		struct ReprojectAndRectify {
 			XyzQuat frame_c0_w;//reproyeccion de referencia / pose 'ideal'
@@ -378,7 +384,7 @@ bool runCalibration(
 	rms = cv::calibrateCameraRO(objectPoints, imagePoints, imageSize, iFixedPoint,
 		cameraMatrix, distCoeffs, rvecs, tvecs, newObjPoints,
 		flag | CALIB_USE_LU,
-		TermCriteria(TermCriteria::COUNT + TermCriteria::EPS , 30, DBL_EPSILON));
+		TermCriteria(TermCriteria::COUNT + TermCriteria::EPS, 30, DBL_EPSILON));
 
 	//consistencia numerica !nan o inf
 	bool ok = checkRange(cameraMatrix) && checkRange(distCoeffs);
@@ -635,7 +641,7 @@ int main(int argc, char** argv)
 				//}
 			}
 			//hand-eye
-			cv::Mat rvecsFlange_Cam, tvecsFlange_Cam;//T_flange_cam
+			RTCV rt_ref_rob, rt_cam_flange;
 			//consistencia numero roto-traslaciones ambos sets
 			//	descarte roto-traslaciones robot sin correspondientes
 			{
@@ -651,17 +657,19 @@ int main(int argc, char** argv)
 				tvecsRob.erase(tvecsRob.begin() + idValids.size(), tvecsRob.end());
 			}
 			vector<V3>ts;
-			array<int, 4>ids{ 0,1,2,4 };
+			//T_flange_rob // invertido req api cv
+			vector<cv::Mat> r_flange_rob(rvecsRob.size()), t_flange_rob(tvecsRob.size());
+			for (int i = 0; i < rvecsRob.size(); ++i)
+				invertRT_CV(rvecsRob[i], tvecsRob[i], r_flange_rob[i], t_flange_rob[i]);
+			array<int, 1>ids{ 0 };
 			for (int i = 0; i < ids.size(); ++i) {
-				cv::calibrateHandEye(rvecsRob, tvecsRob, rvecs_cam_ref, tvecs_cam_ref, rvecsFlange_Cam, tvecsFlange_Cam, (cv::HandEyeCalibrationMethod)ids[i]);// cv::HandEyeCalibrationMethod::CALIB_HAND_EYE_DANIILIDIS);
-				//cout << "rvecsFlange_Cam =\n" << rvecsFlange_Cam << "\n\n";
-				cout << "tvecsFlange_Cam =\n" << tvecsFlange_Cam << "\n\n";
-				//{
-				//	cv::Mat rinv, tinv; invertRT_CV(rvecsFlange_Cam, tvecsFlange_Cam, rinv, tinv);
-				//	cout << "rinv=\n" << rinv << "\n\n";
-				//	cout << "tinv =\n" << tinv << "\n\n";
-				//}
-				ts.push_back(Eigen::Map<Eigen::Vector3d>((double*)tvecsFlange_Cam.data));
+				cv::calibrateRobotWorldHandEye(rvecs_cam_ref, tvecs_cam_ref, r_flange_rob, t_flange_rob,
+					rt_ref_rob[0], rt_ref_rob[1], rt_cam_flange[0], rt_cam_flange[1],
+					(cv::RobotWorldHandEyeCalibrationMethod)ids[i]);
+
+				prt(rt_ref_rob[0]); prt(rt_ref_rob[1]); prt(rt_cam_flange[0]); prt(rt_cam_flange[1]);
+
+				ts.push_back(Eigen::Map<Eigen::Vector3d>((double*)rt_cam_flange[1].data));
 			}
 			//evaluar distancia entre metodos
 			Mx dists(Mx::Zero(ts.size(), ts.size()));
@@ -669,11 +677,13 @@ int main(int argc, char** argv)
 				for (int j = i + 1; j < ts.size(); ++j)
 					dists(i, j) = dists(j, i) = (ts[i] - ts[j]).norm();
 			V3 aver(V3::Zero()); for (auto& t : ts)aver += t; aver /= float(ts.size());
-			cout << "ts\n" << dists << "\naver " << aver.transpose() << '\n';
+			//cout << "ts\n" << dists << "\naver " << aver.transpose() << '\n';
 			//guardarRes
 			{
-				RTCV rt_flange_cam = { rvecsFlange_Cam, tvecsFlange_Cam };
+				RTCV rt_flange_cam = invertRT_CV(rt_cam_flange);
 				pars.handEyeCalib.frame_flange_cam.setfromRT_CV(rt_flange_cam);
+				RTCV rt_rob_ref = invertRT_CV(rt_ref_rob);
+				pars.handEyeCalib.frame_robot_world.setfromRT_CV(rt_rob_ref);
 				pars.saveParams(pars.loadParamsPath);
 			}
 		} while (false);
@@ -775,7 +785,7 @@ int main(int argc, char** argv)
 				//robotExtrinsic
 				else {
 					//c0_ci=c0_w*w_rob*rob_flange*flange_ci
-					M4 T_w_rob = M4::Identity();//asumir que frameRob = frameWorld->w_rob=I
+					M4 T_w_rob = pars.handEyeCalib.frame_robot_world.toM4().inverse();
 
 					M4 T_c0_w = RTCV_to_M4(rt_c0_w);
 					M4& T_rob_flange = Ts_rob_flange[idFile];
@@ -814,7 +824,7 @@ int main(int argc, char** argv)
 
 					//factor de escala de plano repryectado normalizado a distancia de c0
 					double s = k_w_ci / k_w_c0;
-					cout << "s "<<s<<"   t_c0_ci_proj " << t_c0_ci_proj << "\nt_c0_ci_proj_norm " << t_c0_ci_proj_norm << '\n';
+					cout << "s " << s << "   t_c0_ci_proj " << t_c0_ci_proj << "\nt_c0_ci_proj_norm " << t_c0_ci_proj_norm << '\n';
 
 					//encapsulando escalado y offset en nueva proyeccion
 					cv::Mat1d camIntrinsicReproj(3, 3);

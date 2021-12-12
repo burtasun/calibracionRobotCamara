@@ -24,3 +24,6 @@ using Mx = Eigen::Matrix<float_type, -1, -1>;
 
 //RT_CV
 using RTCV = std::array<cv::Mat, 2>;
+
+#define LOG
+#define prt(var) std::cout<<#var<<": "<<var<<'\n';
